@@ -1,0 +1,1 @@
+16463e4bc586fd8afe28a413cc6b3d26e4a19c7174275b9feaff36b306392571  osmosis_liquidity_pool.wasm
