@@ -62,15 +62,15 @@ fn query_funds(deps: &DepsMut, denom: &str, contract_address: &str) -> StdResult
 }
 
 #[entry_point]
-pub fn ibc_destination_callback(
+pub fn ibc_packet_receive(
     deps: DepsMut,
-    env: Env,
-    msg: IbcDestinationCallbackMsg,
-) -> StdResult<IbcBasicResponse> {
+    _env: Env,
+    msg: IbcPacketReceiveMsg,
+) -> StdResult<IbcReceiveResponse> {
     let mut counter = COUNTER.may_load(deps.storage)?.unwrap_or(0);
-    counter += 1;
+    counter += 5;
     COUNTER.save(deps.storage, &counter)?;
-    // Parse packet data
+
     let wasm_msg: WasmMessage = serde_json::from_slice(&msg.packet.data)
         .map_err(|_| StdError::generic_err("Failed to parse packet data"))?;
 
@@ -88,13 +88,13 @@ pub fn ibc_destination_callback(
         }) = execute_msg
         {
             // Query the transferred funds
-            let contract_address = env.contract.address.to_string();
+            let contract_address = _env.contract.address.to_string();
             let amount_a = query_funds(&deps, &token_a.denom, &contract_address)?;
             let amount_b = query_funds(&deps, &token_b.denom, &contract_address)?;
 
             // Create MessageInfo with the contract as sender
             let info = MessageInfo {
-                sender: env.contract.address.clone(),
+                sender: _env.contract.address.clone(),
                 funds: vec![
                     Coin {
                         denom: token_a.denom.clone(),
@@ -108,18 +108,32 @@ pub fn ibc_destination_callback(
             };
 
             // Execute the pool creation
-            let response = create_pool(deps, env, info, token_a, token_b, lp_owner)?;
+            let response = create_pool(deps, _env, info, token_a, token_b, lp_owner)?;
 
             // Acknowledge success
             let ack = IbcAcknowledgement::new(to_binary(&StdAck::success(b"success"))?);
-            return Ok(IbcBasicResponse::new()
+            return Ok(IbcReceiveResponse::new(b"transaction")
                 .add_attribute("action", "ibc_packet_receive")
                 .add_attributes(response.attributes));
         }
     }
 
-    // Acknowledge failure if message is invalid
-    let ack = IbcAcknowledgement::new(to_binary(&StdAck::error("Invalid message format"))?);
+    Ok(IbcReceiveResponse::new(b"success").add_attribute("action", "ibc_channel_connect"))
+}
+
+#[entry_point]
+pub fn ibc_destination_callback(
+    deps: DepsMut,
+    env: Env,
+    msg: IbcDestinationCallbackMsg,
+) -> StdResult<IbcBasicResponse> {
+    let mut counter = COUNTER.may_load(deps.storage)?.unwrap_or(0);
+    counter += 1;
+    COUNTER.save(deps.storage, &counter)?;
+    deps.api
+        .debug(&format!("Received packet data: {:?}", msg.packet.data));
+    // Parse packet data
+
     Ok(IbcBasicResponse::new())
 }
 
@@ -151,11 +165,11 @@ pub fn create_pool(
     // Validate the LP owner address
     let owner_addr = deps.api.addr_validate(&lp_owner)?;
 
-    if owner_addr != info.sender {
-        return Err(StdError::generic_err(
-            "LP owner must be the sender of the transaction",
-        ));
-    }
+    // if owner_addr != info.sender {
+    //     return Err(StdError::generic_err(
+    //         "LP owner must be the sender of the transaction",
+    //     ));
+    // }
 
     // Create pool assets
     let pool_assets = vec![
@@ -359,7 +373,7 @@ pub fn ibc_packet_timeout(
 pub fn query(deps: Deps, _env: Env, msg: crate::msg::QueryMsg) -> StdResult<Binary> {
     match msg {
         crate::msg::QueryMsg::GetChannelInfo {} => to_json_binary(&query_channel_info(deps)?),
-        crate::msg::QueryMsg::GetCounter {} => to_binary(&query_counter(deps)?),
+        crate::msg::QueryMsg::GetCounter {} => to_json_binary(&query_counter(deps)?),
     }
 }
 

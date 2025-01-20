@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 
 [profile.release]
 opt-level = 3
+log_level = "debug"
 debug = false
 rpath = false
 lto = true
